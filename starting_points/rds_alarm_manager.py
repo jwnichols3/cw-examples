@@ -25,7 +25,7 @@ class Config:
     )
     ## RDS Storage Space ##
     ALARM_RDS_STORAGE_NAME_PREFIX = "RDS_Storage_"
-    ALARM_RDS_STORAGE_THRESHOLD_VALUE = 10240000
+    ALARM_RDS_STORAGE_THRESHOLD_VALUE = 1024000
     ALARM_RDS_STORAGE_DATAPOINTS_TO_ALARM = 1
     ALARM_RDS_STORAGE_EVALUATION_PERIODS = 1
     ALARM_RDS_STORAGE_METRIC_PERIOD = 300  # 5 minutes
@@ -353,90 +353,6 @@ def get_rds_freestoragespace_params(target):
     }
 
 
-def get_readlatency_alarm_params(volume_id):
-    return {
-        "EvaluationPeriods": Config.ALARM_READLATENCY_EVALUATION_PERIODS,
-        "DatapointsToAlarm": Config.ALARM_READLATENCY_DATAPOINTS_TO_ALARM,
-        "Threshold": Config.ALARM_READLATENCY_THRESHOLD_VALUE,
-        "Metrics": [
-            {
-                "Id": "e1",
-                "Expression": "(m1 / m2) * 1000",
-                "Label": "Latency",
-                "ReturnData": True,
-            },
-            {
-                "Id": "m1",
-                "MetricStat": {
-                    "Metric": {
-                        "Namespace": "AWS/EBS",
-                        "MetricName": "VolumeTotalReadTime",
-                        "Dimensions": [{"Name": "VolumeId", "Value": volume_id}],
-                    },
-                    "Period": Config.ALARM_READLATENCY_METRIC_PERIOD,
-                    "Stat": "Average",
-                },
-                "ReturnData": False,
-            },
-            {
-                "Id": "m2",
-                "MetricStat": {
-                    "Metric": {
-                        "Namespace": "AWS/EBS",
-                        "MetricName": "VolumeReadOps",
-                        "Dimensions": [{"Name": "VolumeId", "Value": volume_id}],
-                    },
-                    "Period": Config.ALARM_READLATENCY_EVALUATION_TIME,
-                    "Stat": "Average",
-                },
-                "ReturnData": False,
-            },
-        ],
-    }
-
-
-def get_writelatency_alarm_params(volume_id):
-    return {
-        "EvaluationPeriods": Config.ALARM_WRITELATENCY_EVALUATION_PERIODS,
-        "DatapointsToAlarm": Config.ALARM_WRITELATENCY_DATAPOINTS_TO_ALARM,
-        "Threshold": Config.ALARM_WRITELATENCY_THRESHOLD_VALUE,
-        "Metrics": [
-            {
-                "Id": "e1",
-                "Expression": "(m1 / m2) * 1000",
-                "Label": "Latency",
-                "ReturnData": True,
-            },
-            {
-                "Id": "m1",
-                "MetricStat": {
-                    "Metric": {
-                        "Namespace": "AWS/EBS",
-                        "MetricName": "VolumeTotalWriteTime",
-                        "Dimensions": [{"Name": "VolumeId", "Value": volume_id}],
-                    },
-                    "Period": Config.ALARM_WRITELATENCY_METRIC_PERIOD,
-                    "Stat": "Average",
-                },
-                "ReturnData": False,
-            },
-            {
-                "Id": "m2",
-                "MetricStat": {
-                    "Metric": {
-                        "Namespace": "AWS/EBS",
-                        "MetricName": "VolumeWriteOps",
-                        "Dimensions": [{"Name": "VolumeId", "Value": volume_id}],
-                    },
-                    "Period": Config.ALARM_WRITELATENCY_EVALUATION_TIME,
-                    "Stat": "Average",
-                },
-                "ReturnData": False,
-            },
-        ],
-    }
-
-
 def get_impairedvol_alarm_params(volume_id):
     return {
         "EvaluationPeriods": Config.ALARM_IMPAIREDVOL_EVALUATION_PERIODS,
@@ -522,50 +438,6 @@ def fetch_target_info(target, client, service="rds"):
     except Exception as e:
         logging.error(
             f"An error occurred while fetching information for target {target}: {e}"
-        )
-        return None
-
-
-def fetch_volume_info(volume_id, ec2):
-    try:
-        response = ec2.describe_volumes(VolumeIds=[volume_id])
-        volume_info = response["Volumes"][0]
-        tags = volume_info.get("Tags", [])
-        availability_zone = volume_info["AvailabilityZone"]
-
-        tags_dict = {tag["Key"]: tag["Value"] for tag in tags}
-
-        # Fetching attached EC2 instance ID and name
-        attachments = volume_info.get("Attachments", [])
-        instance_id = ""
-        instance_name = ""
-
-        if attachments:
-            instance_id = attachments[0].get("InstanceId", "")
-
-            if instance_id:
-                instance_response = ec2.describe_instances(InstanceIds=[instance_id])
-                instance_info = instance_response["Reservations"][0]["Instances"][0]
-                instance_tags = instance_info.get("Tags", [])
-
-                for tag in instance_tags:
-                    if tag["Key"] == "Name":
-                        instance_name = tag["Value"]
-                        break
-
-        volume_details = {
-            "volume_id": volume_id,
-            "tags_dict": tags_dict,
-            "availability_zone": availability_zone,
-            "attached_instance_id": instance_id,
-            "attached_instance_name": instance_name,
-        }
-
-        logging.debug(f"Fetched information for volume {volume_id}: {volume_details}")
-        return volume_details
-    except Exception as e:
-        logging.error(
-            f"An error occurred while fetching information for volume {volume_id}: {e}"
         )
         return None
 
