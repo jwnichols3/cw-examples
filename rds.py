@@ -4,7 +4,7 @@ from tabulate import tabulate
 from rds.rds_utilities import (
     list_rds_instances,
     get_rds_allocated_storage,
-    get_rds_free_storage_percentage,
+    get_rds_free_storage,
 )
 
 
@@ -29,11 +29,11 @@ def display_cloudwatch_data():
             allocated_storage_gb = get_rds_allocated_storage(
                 instance_id
             )  # Already in GiB
-            free_storage_percentage = get_rds_free_storage_percentage(instance_id)
-            free_storage_gb = allocated_storage_gb * (free_storage_percentage / 100)
+            free_storage_bytes = get_rds_free_storage(instance_id)  # Now in bytes
 
-            # Format numbers with commas and two decimal places
+            # Convert bytes to GB and format numbers
             allocated_storage_str = f"{allocated_storage_gb:,.2f} GB"
+            free_storage_gb = free_storage_bytes / (1024**3)
             free_storage_str = f"{free_storage_gb:,.2f} GB"
 
             data.append([instance_id, allocated_storage_str, free_storage_str])

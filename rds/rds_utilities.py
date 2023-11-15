@@ -37,6 +37,29 @@ def get_rds_allocated_storage(instance_id):
         return f"Error: {e}"
 
 
+def get_rds_free_storage(instance_id):
+    try:
+        client = initialize_aws_client("cloudwatch")
+        metrics = client.get_metric_statistics(
+            Namespace="AWS/RDS",
+            MetricName="FreeStorageSpace",
+            Dimensions=[{"Name": "DBInstanceIdentifier", "Value": instance_id}],
+            StartTime=datetime.datetime.utcnow() - datetime.timedelta(minutes=5),
+            EndTime=datetime.datetime.utcnow(),
+            Period=60,
+            Statistics=["Average"],
+        )
+        if metrics["Datapoints"]:
+            free_storage = sorted(
+                metrics["Datapoints"], key=lambda x: x["Timestamp"], reverse=True
+            )[0]["Average"]
+            return free_storage
+        else:
+            return "No data points found for FreeStorageSpace"
+    except Exception as e:
+        return f"Error getting free storage: {e}"
+
+
 def get_rds_free_storage_percentage(instance_id):
     client = boto3.client("rds")
 
