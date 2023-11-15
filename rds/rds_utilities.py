@@ -98,3 +98,23 @@ def get_rds_free_storage_percentage(instance_id):
 
     except Exception as e:
         return f"Error: {e}"
+
+
+def get_rds_instance_details(instance_id):
+    client = initialize_aws_client("rds")
+    if client is None:
+        return "AWS client initialization failed"
+
+    try:
+        response = client.describe_db_instances(DBInstanceIdentifier=instance_id)
+        instance = response["DBInstances"][0]
+        return {
+            "instance_id": instance["DBInstanceIdentifier"],
+            "allocated_storage": instance["AllocatedStorage"],
+            "engine": instance["Engine"],
+            "availability_zone": instance["AvailabilityZone"],
+            "created_at": instance["InstanceCreateTime"],
+            # Add more fields as needed
+        }
+    except Exception as e:
+        return f"Error: {e}"
