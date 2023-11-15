@@ -1,4 +1,5 @@
 import boto3
+import datetime
 from common.aws_client import initialize_aws_client
 from common.logging_utilities import setup_logging
 
@@ -16,6 +17,24 @@ def list_rds_instances():
     except Exception as e:
         logger.error(f"Error in listing RDS instances: {e}")
         return []
+
+
+def get_rds_allocated_storage(instance_id):
+    client = initialize_aws_client("rds")
+    if client is None:
+        return "AWS client initialization failed"
+
+    try:
+        response = client.describe_db_instances(DBInstanceIdentifier=instance_id)
+        db_instances = response["DBInstances"]
+        if not db_instances:
+            return "Instance not found"
+
+        instance = db_instances[0]
+        allocated_storage = instance["AllocatedStorage"]  # Storage in GiB
+        return allocated_storage
+    except Exception as e:
+        return f"Error: {e}"
 
 
 def get_rds_free_storage_percentage(instance_id):
