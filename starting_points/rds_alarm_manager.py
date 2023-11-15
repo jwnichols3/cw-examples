@@ -19,15 +19,15 @@ class Config:
 
     VPC_ENDPOINT_SNS = f"https://sns.{DEFAULT_REGION}.amazonaws.com"
     INCLUDE_OK_ACTION = True  # If set to False, this will not send the "OK" state change of the alarm to SNS
-    SNS_OK_ACTION_ARN = "arn:aws:sns:us-west-2:338557412966:ebs_alarms"  # Consider this the default if --sns-topic is not passed
+    SNS_OK_ACTION_ARN = "arn:aws:sns:us-west-2:357044226454:ebs_alerts"  # Consider this the default if --sns-topic is not passed
     SNS_ALARM_ACTION_ARN = (
         SNS_OK_ACTION_ARN  # For simplicity, use same SNS topic for Alarm and OK actions
     )
     ## RDS Storage Space ##
     ALARM_RDS_STORAGE_NAME_PREFIX = "RDS_Storage_"
-    ALARM_RDS_STORAGE_THRESHOLD = 10240000
+    ALARM_RDS_STORAGE_THRESHOLD_VALUE = 10240000
     ALARM_RDS_STORAGE_DATAPOINTS_TO_ALARM = 1
-    ALARM_RDS_STORAGE_EVAULATION_PERIODS = 1
+    ALARM_RDS_STORAGE_EVALUATION_PERIODS = 1
     ALARM_RDS_STORAGE_METRIC_PERIOD = 300  # 5 minutes
     ## ImpairedVol Settings ##
     ALARM_IMPAIREDVOL_NAME_PREFIX = "EBS_ImpairedVol_"  # A clean way to identify these automatically created Alarms.
@@ -90,11 +90,8 @@ def main():
     rds, cloudwatch, sns = initialize_aws_clients(args.region)
     # if --tag is used, it requires two values passed (tag_name, tag_value)
     tag_name, tag_value = args.tag if args.tag else (None, None)
-    targets = get_target_ids(targets=rds, tag_name=tag_name, tag_value=tag_value)
+    targets = get_target_ids(client=rds, tag_name=tag_name, tag_value=tag_value)
     alarm_names = get_all_alarm_names(cloudwatch=cloudwatch)
-
-    # volume_ids = get_target_ids(ec2=ec2, tag_name=tag_name, tag_value=tag_value)
-    # alarm_names = get_all_alarm_names(cloudwatch=cloudwatch)
 
     stats = {"created": 0, "deleted": 0, "volumes_processed": 0}
     without_alarm = []
@@ -134,10 +131,10 @@ def main():
             logging.info(f"Creating {alarm_type} alarms...")
             print(f"Creating {alarm_type} alarms...")
             stats["created"] += create_alarms(
-                ds=targets,
+                targets=targets,
                 alarm_names=alarm_names,
                 cloudwatch=cloudwatch,
-                rds=rds,
+                client=rds,
                 alarm_type=alarm_type,
             )
 
@@ -146,7 +143,7 @@ def main():
             logging.info(f"Cleanup {alarm_type} alarms...")
             print(f"Cleaning up {alarm_type} alarms...")
             stats["deleted"] += cleanup_alarms(
-                ids=targets,
+                targets=targets,
                 alarm_names=alarm_names,
                 cloudwatch=cloudwatch,
                 alarm_type=alarm_type,
@@ -159,51 +156,49 @@ def main():
         print(f"The following do not have an Alarm: {', '.join(without_alarm)}")
 
 
-def generate_alarm_description(volume_id, ec2):
-    volume_details = fetch_volume_info(volume_id=volume_id, ec2=ec2)
+def generate_alarm_description(target, client):
+    target_details = fetch_target_info(target=target, client=client, service="rds")
 
-    volume_id = volume_details.get("volume_id", "N/A")
-    availability_zone = volume_details.get("availability_zone", "N/A")
-    tags_dict = volume_details.get("tags_dict", {})
-    attached_instance_id = volume_details.get("attached_instance_id", "")
-    attached_instance_name = volume_details.get("attached_instance_name", "")
+    if not target_details:
+        return f"Alarm description not available for target: {target}"
 
-    alarm_description = f"Alarm for EBS volume {volume_id} in {availability_zone}."
+    db_instance_identifier = target_details.get("db_instance_identifier", "N/A")
+    availability_zone = target_details.get("availability_zone", "N/A")
+    tags_dict = target_details.get("tags", {})
+    db_instance_class = target_details.get("db_instance_class", "N/A")
+    engine = target_details.get("engine", "N/A")
 
-    #### Launch Run is a setting used by the e2e-launch-ec2-instances.py script in this repo.
-    launch_run_tag = tags_dict.get("LaunchRun", "")
-    if launch_run_tag:
-        alarm_description += f"\nLaunchRun: {launch_run_tag}"
-    else:
-        tag_string = ", ".join([f"{k}:{v}" for k, v in tags_dict.items()])
-        alarm_description += f"\nTags: {tag_string}"
+    alarm_description = f"Alarm for RDS instance {db_instance_identifier} ({db_instance_class}, {engine}) in {availability_zone}."
 
-    if attached_instance_id and attached_instance_name:
-        alarm_description += f"\nAttached to Instance ID: {attached_instance_id}, Instance Name: {attached_instance_name}"
-    elif attached_instance_id:
-        alarm_description += f"\nAttached to Instance ID: {attached_instance_id}"
+    tag_string = ", ".join([f"{k}: {v}" for k, v in tags_dict.items()])
+    alarm_description += f"\nTags: {tag_string if tag_string else 'No Tags'}"
 
     return alarm_description
 
 
-def get_target_ids(targets, tag_name=None, tag_value=None):
-    paginator = targets.get_paginator("describe_volumes")
-    volume_ids = []
+def get_target_ids(client, tag_name=None, tag_value=None):
+    paginator = client.get_paginator("describe_db_instances")
+    target_ids = []
 
-    filter_args = []
-    if tag_name and tag_value:
-        filter_args.append({"Name": f"tag:{tag_name}", "Values": [tag_value]})
+    for page in paginator.paginate(MaxRecords=Config.PAGINATION_COUNT):
+        for instance in page["DBInstances"]:
+            if tag_name and tag_value:
+                # Manually filter the instances based on tags
+                # Tags are fetched separately for each instance
+                response = client.list_tags_for_resource(
+                    ResourceName=instance["DBInstanceArn"]
+                )
+                tags = {tag["Key"]: tag["Value"] for tag in response.get("TagList", [])}
+                if tags.get(tag_name) == tag_value:
+                    target_ids.append(instance["DBInstanceIdentifier"])
+            else:
+                target_ids.append(instance["DBInstanceIdentifier"])
 
-    for page in paginator.paginate(
-        Filters=filter_args, MaxResults=Config.PAGINATION_COUNT
-    ):
-        for volume in page["Volumes"]:
-            volume_ids.append(volume["VolumeId"])
-    logging.debug(f"Volume IDs:\n{volume_ids}")
-    return volume_ids
+    logging.debug(f"RDS Instance IDs:\n{target_ids}")
+    return target_ids
 
 
-def cleanup_alarms(target, alarm_names, cloudwatch, alarm_type):
+def cleanup_alarms(targets, alarm_names, cloudwatch, alarm_type):
     deleted_count = 0
 
     if alarm_type == "impairedvol":
@@ -212,6 +207,8 @@ def cleanup_alarms(target, alarm_names, cloudwatch, alarm_type):
         search_prefix = Config.ALARM_READLATENCY_NAME_PREFIX
     if alarm_type == "writelatency":
         search_prefix = Config.ALARM_WRITELATENCY_NAME_PREFIX
+    if alarm_type == "freestoragespace":
+        search_prefix = Config.ALARM_RDS_STORAGE_NAME_PREFIX
 
     for alarm_name in alarm_names:
         # Only consider alarms that start with the prefix defined in the Config class
@@ -219,7 +216,7 @@ def cleanup_alarms(target, alarm_names, cloudwatch, alarm_type):
             # Extract target from the alarm name
             target_id = alarm_name[len(search_prefix) :]
 
-            if id not in target:
+            if target_id not in targets:
                 logging.info(
                     f"Deleting {alarm_type} alarm {alarm_name} as volume {id} no longer exists"
                 )
@@ -241,12 +238,12 @@ def cleanup_alarms(target, alarm_names, cloudwatch, alarm_type):
     return deleted_count
 
 
-def generate_alarm_name(id, alarm_type):
+def generate_alarm_name(target, alarm_type):
     if alarm_type == "freestoragespace":
-        return Config.ALARM_RDS_STORAGE_NAME_PREFIX + id
+        return Config.ALARM_RDS_STORAGE_NAME_PREFIX + target
 
 
-def create_alarms(targets, alarm_names, cloudwatch, ec2, alarm_type):
+def create_alarms(targets, alarm_names, cloudwatch, client, alarm_type):
     created_count = 0
     for target in targets:
         alarm_name = generate_alarm_name(target=target, alarm_type=alarm_type)
@@ -254,7 +251,7 @@ def create_alarms(targets, alarm_names, cloudwatch, ec2, alarm_type):
             create_alarm(
                 target=target,
                 cloudwatch=cloudwatch,
-                ec2=ec2,
+                client=client,
                 alarm_name=alarm_name,
                 alarm_type=alarm_type,
             )
@@ -265,8 +262,8 @@ def create_alarms(targets, alarm_names, cloudwatch, ec2, alarm_type):
     return created_count
 
 
-def create_alarm(target, cloudwatch, ec2, alarm_name, alarm_type):
-    alarm_description = generate_alarm_description(target=target, ec2=ec2)
+def create_alarm(target, cloudwatch, client, alarm_name, alarm_type):
+    alarm_description = generate_alarm_description(target=target, client=client)
 
     alarm_details = {
         "AlarmName": alarm_name,
@@ -276,12 +273,8 @@ def create_alarm(target, cloudwatch, ec2, alarm_name, alarm_type):
         "AlarmDescription": alarm_description,
     }
 
-    if alarm_type == "impairedvol":
-        alarm_details.update(get_impairedvol_alarm_params(target))
-    if alarm_type == "readlatency":
-        alarm_details.update(get_readlatency_alarm_params(target))
-    if alarm_type == "writelatency":
-        alarm_details.update(get_writelatency_alarm_params(target))
+    if alarm_type == "freestoragespace":
+        alarm_details.update(get_rds_freestoragespace_params(target))
 
     if Config.INCLUDE_OK_ACTION:
         alarm_details.update(
@@ -330,6 +323,34 @@ def create_alarm(target, cloudwatch, ec2, alarm_name, alarm_type):
         logging.error(
             f"Unexpected error creating alarm {alarm_name} for volume {target}: {e}"
         )
+
+
+def get_rds_freestoragespace_params(target):
+    return {
+        "EvaluationPeriods": Config.ALARM_RDS_STORAGE_EVALUATION_PERIODS,
+        "DatapointsToAlarm": Config.ALARM_RDS_STORAGE_DATAPOINTS_TO_ALARM,
+        "Threshold": Config.ALARM_RDS_STORAGE_THRESHOLD_VALUE,
+        "Metrics": [
+            {
+                "Id": "m1",
+                "MetricStat": {
+                    "Metric": {
+                        "Namespace": "AWS/RDS",
+                        "MetricName": "FreeStorageSpace",
+                        "Dimensions": [
+                            {
+                                "Name": "DBInstanceIdentifier",
+                                "Value": target,
+                            }
+                        ],
+                    },
+                    "Period": Config.ALARM_RDS_STORAGE_METRIC_PERIOD,
+                    "Stat": "Average",
+                },
+                "ReturnData": True,  # Set to True
+            },
+        ],
+    }
 
 
 def get_readlatency_alarm_params(volume_id):
@@ -472,6 +493,39 @@ def get_impairedvol_alarm_params(volume_id):
     }
 
 
+def fetch_target_info(target, client, service="rds"):
+    # TODO: logic around different services. For now, the default is rds
+    if not service or service.lower() != "rds":
+        return None
+    try:
+        # Fetch all RDS information about the target ID
+        response = client.describe_db_instances(DBInstanceIdentifier=target)
+        instance_info = response["DBInstances"][0]
+
+        # Parse information into tags, availability zone(s), and other relevant information
+        tags_response = client.list_tags_for_resource(
+            ResourceName=instance_info["DBInstanceArn"]
+        )
+        tags = {tag["Key"]: tag["Value"] for tag in tags_response.get("TagList", [])}
+
+        target_details = {
+            "db_instance_identifier": instance_info["DBInstanceIdentifier"],
+            "db_instance_class": instance_info["DBInstanceClass"],
+            "engine": instance_info["Engine"],
+            "availability_zone": instance_info["AvailabilityZone"],
+            "tags": tags
+            # Add other relevant details you need
+        }
+
+        return target_details
+
+    except Exception as e:
+        logging.error(
+            f"An error occurred while fetching information for target {target}: {e}"
+        )
+        return None
+
+
 def fetch_volume_info(volume_id, ec2):
     try:
         response = ec2.describe_volumes(VolumeIds=[volume_id])
@@ -522,7 +576,7 @@ def get_all_alarm_names(cloudwatch):
     for page in paginator.paginate(MaxRecords=Config.PAGINATION_COUNT):
         for alarm in page["MetricAlarms"]:
             alarm_names.append(alarm["AlarmName"])
-    logging.debug(f"Volume IDs:\n{alarm_names}")
+    logging.debug(f"Alarm Names:\n{alarm_names}")
     return alarm_names
 
 
@@ -576,9 +630,9 @@ def initialize_aws_clients(region):
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Manage CloudWatch Alarms for EBS Impaired Volumes."
+        description="Manage CloudWatch Alarms for RDS Instances."
     )
-    parser.add_argument("--volume-id", help="Specific volume id to operate on.")
+    parser.add_argument("--rds-id", help="Specific volume id to operate on.")
     parser.add_argument(
         "--sns-topic",
         help=f"SNS Topic ARN to notify on alarm or ok. Default is {Config.SNS_ALARM_ACTION_ARN}",
@@ -586,8 +640,8 @@ def parse_args():
     parser.add_argument(
         "--alarm-type",
         type=lambda x: x.lower(),
-        choices=["all", "impairedvol", "readlatency", "writelatency"],
-        help=f"Which alarm type to process. Options are All, ImpairedVol, ReadLatency, and WriteLatency. Default is All.",
+        choices=["all", "freestoragespace"],
+        help=f"Which alarm type to process. Options are All or freestoragespace. Default is All.",
     )
     parser.add_argument(
         "--create", action="store_true", help="Create CloudWatch Alarms."
@@ -596,7 +650,7 @@ def parse_args():
         "--tag",
         nargs=2,
         metavar=("TagName", "TagValue"),
-        help="TagName and TagValue to filter EBS volumes.",
+        help="TagName and TagValue to filter RDS instances.",
     )
     parser.add_argument(
         "--cleanup", action="store_true", help="Cleanup CloudWatch Alarms."
