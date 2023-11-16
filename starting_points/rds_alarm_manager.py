@@ -25,47 +25,10 @@ class Config:
     )
     ## RDS Storage Space ##
     ALARM_RDS_STORAGE_NAME_PREFIX = "RDS_Storage_"
-    ALARM_RDS_STORAGE_THRESHOLD_VALUE = 1024000
+    ALARM_RDS_STORAGE_THRESHOLD_VALUE = 1024000  # Adjust this to meet your needs
     ALARM_RDS_STORAGE_DATAPOINTS_TO_ALARM = 1
     ALARM_RDS_STORAGE_EVALUATION_PERIODS = 1
     ALARM_RDS_STORAGE_METRIC_PERIOD = 300  # 5 minutes
-    ## ImpairedVol Settings ##
-    ALARM_IMPAIREDVOL_NAME_PREFIX = "EBS_ImpairedVol_"  # A clean way to identify these automatically created Alarms.
-    ALARM_IMPAIREDVOL_EVALUATION_TIME = 60  # Frequency of Alarm Evaluation. EBS metrics are vended every 60 seconds by default.
-    ALARM_IMPAIREDVOL_METRIC_PERIOD = (
-        ALARM_IMPAIREDVOL_EVALUATION_TIME  # Has to tbe the same (for now).
-    )
-    ALARM_IMPAIREDVOL_EVALUATION_PERIODS = 2  # How many times does the threshold have to breached before setting off the alarm
-    ALARM_IMPAIREDVOL_DATAPOINTS_TO_ALARM = (
-        2  # Minimum number of datapoints the alarm needs within the alarm period
-    )
-    ALARM_IMPAIREDVOL_THRESHOLD_VALUE = (
-        1  # Threshold value for alarm - it is either 0 or 1
-    )
-    ## ReadLatency Settings ##
-    ALARM_READLATENCY_NAME_PREFIX = "EBS_ReadLatency_"  # A clean way to identify these automatically created Alarms.
-    ALARM_READLATENCY_THRESHOLD_VALUE = 50  # Threshold value for alarm in milliseconds
-    ALARM_READLATENCY_EVALUATION_TIME = 60  # Frequency of Alarm Evaluation. EBS metrics are vended every 60 seconds by default.
-    ALARM_READLATENCY_METRIC_PERIOD = (
-        ALARM_READLATENCY_EVALUATION_TIME  # Has to tbe the same (for now).
-    )
-    ALARM_READLATENCY_EVALUATION_PERIODS = 2  # How many times does the threshold have to breached before setting off the alarm
-    ALARM_READLATENCY_DATAPOINTS_TO_ALARM = (
-        2  # Minimum number of datapoints the alarm needs within the alarm period
-    )
-    ## WriteLatency Settings ##
-    ALARM_WRITELATENCY_NAME_PREFIX = "EBS_WriteLatency_"  # A clean way to identify these automatically created Alarms.
-    ALARM_WRITELATENCY_THRESHOLD_VALUE = (
-        200  # Threshold value for alarm in milliseconds
-    )
-    ALARM_WRITELATENCY_EVALUATION_TIME = 60  # Frequency of Alarm Evaluation. EBS metrics are vended every 60 seconds by default.
-    ALARM_WRITELATENCY_METRIC_PERIOD = (
-        ALARM_WRITELATENCY_EVALUATION_TIME  # Has to tbe the same (for now).
-    )
-    ALARM_WRITELATENCY_EVALUATION_PERIODS = 2  # How many times does the threshold have to breached before setting off the alarm
-    ALARM_WRITELATENCY_DATAPOINTS_TO_ALARM = (
-        2  # Minimum number of datapoints the alarm needs within the alarm period
-    )
 
 
 def main():
@@ -348,62 +311,6 @@ def get_rds_freestoragespace_params(target):
                     "Stat": "Average",
                 },
                 "ReturnData": True,  # Set to True
-            },
-        ],
-    }
-
-
-def get_impairedvol_alarm_params(volume_id):
-    return {
-        "EvaluationPeriods": Config.ALARM_IMPAIREDVOL_EVALUATION_PERIODS,
-        "DatapointsToAlarm": Config.ALARM_IMPAIREDVOL_DATAPOINTS_TO_ALARM,
-        "Threshold": Config.ALARM_IMPAIREDVOL_THRESHOLD_VALUE,
-        "Metrics": [
-            {
-                "Id": "e1",
-                "Expression": "IF(m3>0 AND m1+m2==0, 1, 0)",
-                "Label": "ImpairedVolume",
-                "ReturnData": True,
-                "Period": Config.ALARM_IMPAIREDVOL_EVALUATION_TIME,
-            },
-            {
-                "Id": "m3",
-                "MetricStat": {
-                    "Metric": {
-                        "Namespace": "AWS/EBS",
-                        "MetricName": "VolumeQueueLength",
-                        "Dimensions": [{"Name": "VolumeId", "Value": volume_id}],
-                    },
-                    "Period": Config.ALARM_IMPAIREDVOL_METRIC_PERIOD,
-                    "Stat": "Average",
-                },
-                "ReturnData": False,
-            },
-            {
-                "Id": "m1",
-                "MetricStat": {
-                    "Metric": {
-                        "Namespace": "AWS/EBS",
-                        "MetricName": "VolumeReadOps",
-                        "Dimensions": [{"Name": "VolumeId", "Value": volume_id}],
-                    },
-                    "Period": Config.ALARM_IMPAIREDVOL_METRIC_PERIOD,
-                    "Stat": "Average",
-                },
-                "ReturnData": False,
-            },
-            {
-                "Id": "m2",
-                "MetricStat": {
-                    "Metric": {
-                        "Namespace": "AWS/EBS",
-                        "MetricName": "VolumeWriteBytes",
-                        "Dimensions": [{"Name": "VolumeId", "Value": volume_id}],
-                    },
-                    "Period": Config.ALARM_IMPAIREDVOL_METRIC_PERIOD,
-                    "Stat": "Average",
-                },
-                "ReturnData": False,
             },
         ],
     }
