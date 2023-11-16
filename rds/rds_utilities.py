@@ -6,8 +6,8 @@ from common.logging_utilities import setup_logging
 logger = setup_logging()
 
 
-def list_rds_instances():
-    client = initialize_aws_client("rds")
+def list_rds_instances(region_name=None):
+    client = initialize_aws_client("rds", region_name=region_name)
     if client is None:
         return []
 
@@ -19,8 +19,8 @@ def list_rds_instances():
         return []
 
 
-def get_rds_allocated_storage(instance_id):
-    client = initialize_aws_client("rds")
+def get_rds_allocated_storage(instance_id, region_name=None):
+    client = initialize_aws_client("rds", region_name=region_name)
     if client is None:
         return "AWS client initialization failed"
 
@@ -37,9 +37,9 @@ def get_rds_allocated_storage(instance_id):
         return f"Error: {e}"
 
 
-def get_rds_free_storage(instance_id):
+def get_rds_free_storage(instance_id, region_name=None):
     try:
-        client = initialize_aws_client("cloudwatch")
+        client = initialize_aws_client("cloudwatch", region_name=region_name)
         metrics = client.get_metric_statistics(
             Namespace="AWS/RDS",
             MetricName="FreeStorageSpace",
@@ -60,8 +60,8 @@ def get_rds_free_storage(instance_id):
         return f"Error getting free storage: {e}"
 
 
-def get_rds_free_storage_percentage(instance_id):
-    client = boto3.client("rds")
+def get_rds_free_storage_percentage(instance_id, region_name=None):
+    client = boto3.client("rds", region_name=region_name)
 
     try:
         # Fetch details of the RDS instance
@@ -100,20 +100,42 @@ def get_rds_free_storage_percentage(instance_id):
         return f"Error: {e}"
 
 
-def get_rds_instance_details(instance_id):
-    client = initialize_aws_client("rds")
+def get_rds_instance_tags(instance_id, region_name=None):
+    client = initialize_aws_client("rds", region_name=region_name)
+    if client is None:
+        return {}
+
+    try:
+        # Fetch the AWS account ID
+        sts_client = initialize_aws_client("sts", region_name=region_name)
+        account_id = sts_client.get_caller_identity()["Account"]
+
+        response = client.list_tags_for_resource(
+            ResourceName=f"arn:aws:rds:{client.meta.region_name}:{account_id}:db:{instance_id}"
+        )
+        return {tag["Key"]: tag["Value"] for tag in response["TagList"]}
+    except Exception as e:
+        logger.error(f"Error in getting RDS instance tags: {e}")
+        return {}
+
+
+def get_rds_instance_details(instance_id, region_name=None):
+    client = initialize_aws_client("rds", region_name=region_name)
     if client is None:
         return "AWS client initialization failed"
 
     try:
         response = client.describe_db_instances(DBInstanceIdentifier=instance_id)
         instance = response["DBInstances"][0]
+        tags = get_rds_instance_tags(instance_id)
+
         return {
             "instance_id": instance["DBInstanceIdentifier"],
             "allocated_storage": instance["AllocatedStorage"],
             "engine": instance["Engine"],
             "availability_zone": instance["AvailabilityZone"],
             "created_at": instance["InstanceCreateTime"],
+            "tags": tags
             # Add more fields as needed
         }
     except Exception as e:

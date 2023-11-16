@@ -3,8 +3,8 @@ import json
 from common.aws_client import initialize_aws_client
 
 
-def list_cloudwatch_alarms():
-    client = initialize_aws_client("cloudwatch")
+def list_cloudwatch_alarms(region_name=None):
+    client = initialize_aws_client("cloudwatch", region_name=region_name)
     if client is None:
         return []
 
@@ -16,8 +16,8 @@ def list_cloudwatch_alarms():
         return []
 
 
-def list_cloudwatch_dashboards():
-    client = initialize_aws_client("cloudwatch")
+def list_cloudwatch_dashboards(region_name=None):
+    client = initialize_aws_client("cloudwatch", region_name=region_name)
     if client is None:
         return []
 
@@ -31,8 +31,8 @@ def list_cloudwatch_dashboards():
         return []
 
 
-def get_dashboard_details(dashboard_name):
-    client = initialize_aws_client("cloudwatch")
+def get_dashboard_details(dashboard_name, region_name=None):
+    client = initialize_aws_client("cloudwatch", region_name=region_name)
     if client is None:
         return "AWS client initialization failed"
 
@@ -44,8 +44,8 @@ def get_dashboard_details(dashboard_name):
         return f"Error getting dashboard details: {e}"
 
 
-def create_or_update_rds_dashboard(dashboard_name, rds_instance_ids):
-    client = initialize_aws_client("cloudwatch")
+def create_or_update_rds_dashboard(dashboard_name, rds_instance_ids, region_name=None):
+    client = initialize_aws_client("cloudwatch", region_name=region_name)
     if client is None:
         return "AWS client initialization failed"
 
