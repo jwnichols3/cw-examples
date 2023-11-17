@@ -315,3 +315,40 @@ def get_subnets_for_vpc(vpc_id, ec2_client=None, region_name=None):
     except Exception as e:
         logger.error(f"Error retrieving subnets for VPC {vpc_id}: {e}")
         return None
+
+
+def create_db_subnet_group(name, description, subnet_ids, rds_client):
+    """
+    Creates a DB subnet group for RDS instances.
+
+    :param name: The name of the DB subnet group.
+    :param description: The description of the DB subnet group.
+    :param subnet_ids: A list of subnet IDs to be added to the DB subnet group.
+    :param rds_client: The boto3 RDS client.
+    :return: The created DB subnet group's name or None if creation fails.
+    """
+    try:
+        rds_client.create_db_subnet_group(
+            DBSubnetGroupName=name,
+            DBSubnetGroupDescription=description,
+            SubnetIds=subnet_ids,
+        )
+        return name
+    except Exception as e:
+        print(f"Error creating DB subnet group: {e}")
+        return None
+
+
+def list_db_subnet_groups(rds_client):
+    """
+    Lists DB subnet groups.
+
+    :param rds_client: The boto3 RDS client.
+    :return: A list of DB subnet group names.
+    """
+    try:
+        response = rds_client.describe_db_subnet_groups()
+        return [sg["DBSubnetGroupName"] for sg in response["DBSubnetGroups"]]
+    except Exception as e:
+        logger.error(f"Error listing DB subnet groups: {e}")
+        return None
