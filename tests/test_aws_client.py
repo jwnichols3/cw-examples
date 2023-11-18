@@ -1,6 +1,7 @@
 import unittest
 from moto import mock_s3, mock_ec2
-from common.aws_client import initialize_aws_client
+from botocore.exceptions import ClientError
+from common.aws_client import initialize_aws_client, initialize_aws_resource
 
 
 class TestAWSClient(unittest.TestCase):
@@ -21,7 +22,26 @@ class TestAWSClient(unittest.TestCase):
         self.assertIsNotNone(client)
         self.assertEqual(client.meta.region_name, test_region)
 
-    # Additional tests can be added for other services and scenarios
+    @mock_ec2
+    def test_initialize_ec2_resource_with_region(self):
+        # Test EC2 resource initialization with a specific region
+        test_region = "us-east-2"
+        resource = initialize_aws_resource("ec2", region_name=test_region)
+        self.assertIsNotNone(resource)
+        # Additional checks can be added here if necessary
+
+
+@mock_ec2
+def test_initialize_with_invalid_region(self):
+    with self.assertRaises(ClientError):
+        initialize_aws_client("ec2", region_name="invalid-region")
+
+
+def test_initialize_with_invalid_service(self):
+    with self.assertRaises(
+        ValueError
+    ):  # Assuming ValueError is raised for invalid service
+        initialize_aws_client("invalid-service")
 
 
 if __name__ == "__main__":
