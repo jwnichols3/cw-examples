@@ -1,6 +1,6 @@
 import unittest
 import boto3
-from moto import mock_ec2
+from moto import mock_ec2, mock_rds
 from common.aws_utilities import (
     get_latest_amazon_linux_ami,
     get_vpcs,
@@ -13,6 +13,8 @@ from common.aws_utilities import (
     get_vpcs_with_names,
     get_availability_zones_for_vpc,
     get_subnets_for_vpc,
+    create_db_subnet_group,
+    get_db_subnet_groups,
 )
 
 
@@ -233,6 +235,37 @@ class TestAWSUtilities(unittest.TestCase):
         self.assertEqual(
             len(retrieved_subnet_ids - initial_subnet_ids), len(subnet_ids)
         )
+
+    @mock_rds
+    def test_create_db_subnet_group(self):
+        rds_client = boto3.client("rds", region_name="us-east-1")
+        subnet_group_name = create_db_subnet_group(
+            "test_subnet_group", "Test Description", ["subnet-12345"], rds_client
+        )
+
+        self.assertEqual(subnet_group_name, "test_subnet_group")
+
+        # Verify the subnet group was created
+        response = rds_client.describe_db_subnet_groups(
+            DBSubnetGroupName="test_subnet_group"
+        )
+        self.assertEqual(
+            response["DBSubnetGroups"][0]["DBSubnetGroupName"], "test_subnet_group"
+        )
+
+    @mock_rds
+    def test_get_db_subnet_groups(self):
+        rds_client = boto3.client("rds", region_name="us-east-1")
+
+        # Create a dummy DB subnet group
+        rds_client.create_db_subnet_group(
+            DBSubnetGroupName="test_subnet_group",
+            DBSubnetGroupDescription="Test Description",
+            SubnetIds=["subnet-12345"],
+        )
+
+        subnet_groups = get_db_subnet_groups(rds_client)
+        self.assertIn("test_subnet_group", subnet_groups)
 
 
 if __name__ == "__main__":

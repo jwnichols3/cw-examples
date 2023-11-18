@@ -339,7 +339,7 @@ def create_db_subnet_group(name, description, subnet_ids, rds_client):
         return None
 
 
-def list_db_subnet_groups(rds_client):
+def get_db_subnet_groups(rds_client):
     """
     Lists DB subnet groups.
 
